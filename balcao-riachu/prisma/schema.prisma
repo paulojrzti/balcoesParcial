@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./prisma/dev.db"
+}
+
+
+model Categoria {
+  id       Int       @id @default(autoincrement())
+  nome     String    @unique
+  tipo     TipoMeta  // MONETARIO ou UNITARIO
+  metasMes MetaMes[]
+  vendas   Venda[]
+}
+
+model MetaMes {
+  id          Int        @id @default(autoincrement())
+  categoria   Categoria  @relation(fields: [categoriaId], references: [id])
+  categoriaId Int
+  ano         Int
+  mes         Int
+  valor       Float      // teto do mês
+
+  metasDia    MetaDia[]
+
+  @@unique([categoriaId, ano, mes])
+}
+
+model MetaDia {
+  id        Int     @id @default(autoincrement())
+  metaMes   MetaMes @relation(fields: [metaMesId], references: [id])
+  metaMesId Int
+  dia       Int
+  valor     Float   // meta diária
+
+  @@unique([metaMesId, dia])
+}
+
+model Venda {
+  id          Int       @id @default(autoincrement())
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+  categoriaId Int
+  valor       Float
+  data        DateTime  @default(now())
+}
+
+enum TipoMeta {
+  MONETARIO
+  UNITARIO
+}
+
