@@ -39,18 +39,22 @@ export default function Metas() {
   }>({});
   const [formatted, setFormatted] = useState<number[]>([]);
 
-  // estado do modal
   const [openDia, setOpenDia] = useState<number | null>(null);
 
-  // helpers
   const ano = date?.getFullYear() ?? 0;
   const mes = date?.getMonth() != null ? date.getMonth() + 1 : 0;
 
   // busca categorias
   const fetchCategorias = async () => {
-    const res = await fetch("/api/categorias");
-    const data = await res.json();
-    setCategorias(data);
+    try {
+      const res = await fetch("/api/categorias");
+      const data = await res.json().catch(() => []);
+      console.log("categorias recebidas:", data);
+      setCategorias(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Erro ao buscar categorias:", err);
+      setCategorias([]);
+    }
   };
 
   useEffect(() => {
@@ -71,28 +75,35 @@ export default function Metas() {
     }
   }, [date]);
 
-  // busca metas mensais e distribuídas
+  // busca metas mensais
   useEffect(() => {
     const fetchMetas = async () => {
       if (!date) return;
       const ano = date.getFullYear();
       const mes = date.getMonth() + 1;
 
-      const res = await fetch(`/api/metas?ano=${ano}&mes=${mes}`);
-      const data: MetaMes[] = await res.json();
+      try {
+        const res = await fetch(`/api/metas?ano=${ano}&mes=${mes}`);
+        const data: MetaMes[] = await res.json().catch(() => []);
 
-      const metasMap: {
-        [key: number]: { valor: number; distribuido: number };
-      } = {};
-      data.forEach((meta) => {
-        const distribuido = meta.metasDia.reduce((acc, d) => acc + d.valor, 0);
-        metasMap[meta.categoriaId] = {
-          valor: meta.valor,
-          distribuido,
-        };
-      });
+        const metasMap: {
+          [key: number]: { valor: number; distribuido: number };
+        } = {};
 
-      setMetasDefinidas(metasMap);
+        (Array.isArray(data) ? data : []).forEach((meta) => {
+          const distribuido = Array.isArray(meta.metasDia)
+            ? meta.metasDia.reduce((acc, d) => acc + d.valor, 0)
+            : 0;
+          metasMap[meta.categoriaId] = {
+            valor: meta.valor,
+            distribuido,
+          };
+        });
+
+        setMetasDefinidas(metasMap);
+      } catch (err) {
+        console.error("Erro ao buscar metas:", err);
+      }
     };
 
     fetchMetas();
@@ -110,23 +121,20 @@ export default function Metas() {
     const payload = { categoriaId, ano, mes, valor: Number(valor) };
 
     try {
-      // checa se já existe meta para essa categoria no mês/ano
       const resCheck = await fetch(
         `/api/metas?ano=${ano}&mes=${mes}&categoriaId=${categoriaId}`
       );
-      const dataCheck: MetaMes[] = await resCheck.json();
-      const existente = dataCheck[0];
+      const dataCheck: MetaMes[] = await resCheck.json().catch(() => []);
+      const existente = Array.isArray(dataCheck) ? dataCheck[0] : null;
 
       let res;
       if (existente) {
-        // já existe → atualiza com PUT
         res = await fetch(`/api/metas/${existente.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ valor: Number(valor) }),
         });
       } else {
-        // não existe → cria com POST
         res = await fetch("/api/metas", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -176,10 +184,14 @@ export default function Metas() {
         const res = await fetch(
           `/api/metas?ano=${ano}&mes=${mes}&categoriaId=${cat.id}`
         );
-        const metaMes: MetaMes[] = await res.json();
-        if (!metaMes[0]) continue;
+        const metaMes: MetaMes[] = await res.json().catch(() => []);
 
-        const existente = metaMes[0].metasDia.find((d) => d.dia === openDia);
+        if (!Array.isArray(metaMes) || !metaMes[0]) continue;
+
+        const existente = Array.isArray(metaMes[0].metasDia)
+          ? metaMes[0].metasDia.find((d) => d.dia === openDia)
+          : undefined;
+
         if (existente) {
           setMetasDiarias((prev) => ({
             ...prev,
@@ -195,7 +207,7 @@ export default function Metas() {
     fetchMetasDia();
   }, [openDia, categorias, ano, mes]);
 
-  // salvar meta diária (POST ou PUT)
+  // salvar meta diária
   const handleSaveAndNext = async () => {
     if (openDia == null) return;
 
@@ -206,12 +218,14 @@ export default function Metas() {
       const metaMes = await fetch(
         `/api/metas?ano=${ano}&mes=${mes}&categoriaId=${cat.id}`
       )
-        .then((res) => res.json())
-        .then((data: MetaMes[]) => data[0]);
+        .then((res) => res.json().catch(() => []))
+        .then((data: MetaMes[]) => (Array.isArray(data) ? data[0] : null));
 
       if (!metaMes) continue;
 
-      const existente = metaMes.metasDia.find((d) => d.dia === openDia);
+      const existente = Array.isArray(metaMes.metasDia)
+        ? metaMes.metasDia.find((d) => d.dia === openDia)
+        : undefined;
 
       if (existente) {
         await fetch(`/api/metas/dias/${existente.id}`, {
@@ -239,11 +253,13 @@ export default function Metas() {
 
     // recarrega metas para atualizar "distribuído"
     const res = await fetch(`/api/metas?ano=${ano}&mes=${mes}`);
-    const data: MetaMes[] = await res.json();
+    const data: MetaMes[] = await res.json().catch(() => []);
     const metasMap: { [key: number]: { valor: number; distribuido: number } } =
       {};
-    data.forEach((meta) => {
-      const distribuido = meta.metasDia.reduce((acc, d) => acc + d.valor, 0);
+    (Array.isArray(data) ? data : []).forEach((meta) => {
+      const distribuido = Array.isArray(meta.metasDia)
+        ? meta.metasDia.reduce((acc, d) => acc + d.valor, 0)
+        : 0;
       metasMap[meta.categoriaId] = {
         valor: meta.valor,
         distribuido,
