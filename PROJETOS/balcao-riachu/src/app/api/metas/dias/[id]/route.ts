@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import {prisma} from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params; // ✅ precisa dar await
   const body = await req.json();
-  const { valor } = body;
+  const { valor } = body as { valor: number };
 
   const metaDiaExistente = await prisma.metaDia.findUnique({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
     include: { metaMes: { include: { metasDia: true } } },
   });
 
@@ -38,7 +39,7 @@ export async function PUT(
   }
 
   const metaDia = await prisma.metaDia.update({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
     data: { valor },
   });
 
