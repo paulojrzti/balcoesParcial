@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 type Params = {
-  params: {
-    id: string;
-  };
+  params: Promise<{ id: string }>;
 };
 
 // GET - obter categoria por ID
 export async function GET(req: NextRequest, { params }: Params) {
+  const { id } = await params; // 👈 precisa dar await agora
+
   try {
     const categoria = await prisma.categoria.findUnique({
-      where: { id: Number(params.id) },
+      where: { id: Number(id) },
     });
 
     if (!categoria) {
@@ -32,11 +32,13 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 // PUT - atualizar categoria
 export async function PUT(req: NextRequest, { params }: Params) {
+  const { id } = await params;
+
   try {
     const { nome } = await req.json();
 
     const categoria = await prisma.categoria.update({
-      where: { id: Number(params.id) },
+      where: { id: Number(id) },
       data: { nome },
     });
 
@@ -51,9 +53,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
 // DELETE - remover categoria
 export async function DELETE(req: NextRequest, { params }: Params) {
+  const { id } = await params;
+
   try {
     await prisma.categoria.delete({
-      where: { id: Number(params.id) },
+      where: { id: Number(id) },
     });
 
     return NextResponse.json({ message: "Categoria deletada com sucesso" });
