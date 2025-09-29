@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import {prisma} from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // GET /api/vendas/[id]
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+
   const venda = await prisma.venda.findUnique({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
     include: { categoria: true },
   });
 
@@ -24,13 +26,18 @@ export async function GET(
 // PUT /api/vendas/[id]
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
   const body = await req.json();
-  const { valor, data, categoriaId } = body;
+  const { valor, data, categoriaId } = body as {
+    valor: number;
+    data?: string;
+    categoriaId: number;
+  };
 
   const venda = await prisma.venda.update({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
     data: {
       valor,
       data: data ? new Date(data) : undefined,
@@ -44,10 +51,12 @@ export async function PUT(
 // DELETE /api/vendas/[id]
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+
   await prisma.venda.delete({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
   });
 
   return NextResponse.json({ message: "Venda removida com sucesso" });
