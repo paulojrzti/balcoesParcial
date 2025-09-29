@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// GET - obter categoria por ID
-export async function GET(req: NextRequest, context: any) {
-  try {
-    const { id } = context.params;
+type Params = {
+  params: {
+    id: string;
+  };
+};
 
+// GET - obter categoria por ID
+export async function GET(req: NextRequest, { params }: Params) {
+  try {
     const categoria = await prisma.categoria.findUnique({
-      where: { id: Number(id) },
+      where: { id: Number(params.id) },
     });
 
     if (!categoria) {
@@ -18,7 +22,7 @@ export async function GET(req: NextRequest, context: any) {
     }
 
     return NextResponse.json(categoria);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Erro ao buscar categoria" },
       { status: 500 }
@@ -27,18 +31,17 @@ export async function GET(req: NextRequest, context: any) {
 }
 
 // PUT - atualizar categoria
-export async function PUT(req: NextRequest, context: any) {
+export async function PUT(req: NextRequest, { params }: Params) {
   try {
-    const { id } = context.params;
     const { nome } = await req.json();
 
     const categoria = await prisma.categoria.update({
-      where: { id: Number(id) },
+      where: { id: Number(params.id) },
       data: { nome },
     });
 
     return NextResponse.json(categoria);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Erro ao atualizar categoria" },
       { status: 500 }
@@ -47,16 +50,14 @@ export async function PUT(req: NextRequest, context: any) {
 }
 
 // DELETE - remover categoria
-export async function DELETE(req: NextRequest, context: any) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   try {
-    const { id } = context.params;
-
     await prisma.categoria.delete({
-      where: { id: Number(id) },
+      where: { id: Number(params.id) },
     });
 
     return NextResponse.json({ message: "Categoria deletada com sucesso" });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Erro ao deletar categoria" },
       { status: 500 }
