@@ -1,21 +1,23 @@
-import { NextResponse } from "next/server";
-import {prisma} from "@/lib/prisma";
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 // GET - obter categoria por ID
 export async function GET(
-  req: Request,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const categoria = await prisma.categoria.findUnique({
       where: { id: Number(params.id) },
     });
+
     if (!categoria) {
       return NextResponse.json(
         { error: "Categoria não encontrada" },
         { status: 404 }
       );
     }
+
     return NextResponse.json(categoria);
   } catch (error) {
     return NextResponse.json(
@@ -27,15 +29,17 @@ export async function GET(
 
 // PUT - atualizar categoria
 export async function PUT(
-  req: Request,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const { nome } = await req.json();
+
     const categoria = await prisma.categoria.update({
       where: { id: Number(params.id) },
       data: { nome },
     });
+
     return NextResponse.json(categoria);
   } catch (error) {
     return NextResponse.json(
@@ -47,13 +51,14 @@ export async function PUT(
 
 // DELETE - remover categoria
 export async function DELETE(
-  req: Request,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     await prisma.categoria.delete({
       where: { id: Number(params.id) },
     });
+
     return NextResponse.json({ message: "Categoria deletada com sucesso" });
   } catch (error) {
     return NextResponse.json(
