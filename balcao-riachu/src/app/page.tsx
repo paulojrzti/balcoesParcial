@@ -183,39 +183,35 @@ export default function HomePage() {
               const dia = date.getDate();
 
               try {
-                // Buscar vendas do dia
                 const res = await fetch(
-                  `/api/vendas?ano=${ano}&mes=${mes}&dia=${dia}`
-                );
-                const vendasDoDia = await res.json();
+  `/api/vendas?ano=${ano}&mes=${mes}&dia=${dia}`
+);
+const vendasDoDia = await res.json();
 
-                const existente = vendasDoDia.find(
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (v: any) => v.categoriaId === categoriaId
-                );
+const existente = vendasDoDia.find(
+  (v: any) => v.categoriaId === categoriaId
+);
 
-                let response;
-                if (existente) {
-                  // PUT → atualiza valor
-                if (existente) {
-  // PUT → só manda valor
+let response;
+if (existente) {
+  // PUT → só atualiza valor da venda do dia certo
   response = await fetch(`/api/vendas/${existente.id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ valor }),  // 👈 só valor
+    body: JSON.stringify({ valor }),
   });
 } else {
-  // POST → continua igual
+  // POST → cria nova venda com data correta
   response = await fetch(`/api/vendas`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       valor,
-      data: date,        // aqui sim precisa mandar data
+      data: date,
       categoriaId,
     }),
   });
-                }
+}
 
                 if (!response.ok) {
                   throw new Error("Erro ao salvar venda");
