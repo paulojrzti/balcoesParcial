@@ -27,79 +27,111 @@ interface MetaMes {
 }
 
 export default function Metas() {
+  // ==== HELPERS (topo do componente) ====
+  const formatBRL = (value: number | null | undefined) => {
+    if (value == null || isNaN(value)) return "";
+    return value.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
+  };
+
+  const parseBRLInput = (input: string) => {
+    // pega só dígitos e divide por 100 pra centavos
+    const onlyDigits = input.replace(/\D/g, "");
+    return Number(onlyDigits || "0") / 100;
+  };
+
+  const maskBRL = (raw: string) => {
+    const cents = Number(raw.replace(/\D/g, "") || "0");
+    return formatBRL(cents / 100);
+  };
+
+  const formatForDisplay = (
+    value: string | number | null | undefined,
+    tipo: "MONETARIO" | "UNITARIO"
+  ) => {
+    if (value == null || value === "") return "";
+    const s = String(value);
+    if (tipo === "MONETARIO") {
+      // se já veio formatado, mantém; senão aplica máscara
+      return /R\$|,|\./.test(s) ? s : maskBRL(s);
+    }
+    // UNITARIO: apenas dígitos
+    return s.replace(/\D/g, "");
+  };
+
+  // ==== ESTADOS ====
   const [mode] = useState<"month" | "day">("month");
   const [date, setDate] = useState<Date | null>(new Date());
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+
+  // metas mensais (input controlado como string p/ permitir máscara)
   const [metas, setMetas] = useState<{ [key: number]: string }>({});
+
+  // metas mensais já salvas (para mostrar definido/distribuído)
   const [metasDefinidas, setMetasDefinidas] = useState<{
     [key: number]: { valor: number; distribuido: number };
   }>({});
+
+  // metas diárias (sempre number p/ cálculo)
   const [metasDiarias, setMetasDiarias] = useState<{
     [dia: number]: { [categoriaId: number]: number };
   }>({});
+
   const [formatted, setFormatted] = useState<number[]>([]);
-
   const [openDia, setOpenDia] = useState<number | null>(null);
-
-  const ano = date?.getFullYear() ?? 0;
-  const mes = date?.getMonth() != null ? date.getMonth() + 1 : 0;
   const [loading, setLoading] = useState(false);
   const [diasCompletos, setDiasCompletos] = useState<Set<number>>(new Set());
 
-  // busca categorias
+  const ano = date?.getFullYear() ?? 0;
+  const mes = date?.getMonth() != null ? date.getMonth() + 1 : 0;
+
+  // ==== CATEGORIAS ====
   const fetchCategorias = async () => {
     try {
       const res = await fetch("/api/categorias");
       const data = await res.json().catch(() => []);
-      console.log("categorias recebidas:", data);
       setCategorias(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Erro ao buscar categorias:", err);
       setCategorias([]);
     }
   };
-
   useEffect(() => {
     fetchCategorias();
   }, []);
 
-  // cria array de dias do mês
-  const getDiasDoMes = (date: Date) => {
-    const ano = date.getFullYear();
-    const mes = date.getMonth();
-    const numDias = new Date(ano, mes + 1, 0).getDate();
+  // ==== DIAS DO MÊS ====
+  const getDiasDoMes = (d: Date) => {
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const numDias = new Date(y, m + 1, 0).getDate();
     return Array.from({ length: numDias }, (_, i) => i + 1);
   };
-
   useEffect(() => {
-    if (date) {
-      setFormatted(getDiasDoMes(date));
-    }
+    if (date) setFormatted(getDiasDoMes(date));
   }, [date]);
 
-  // busca metas mensais
+  // ==== BUSCA METAS MENSAIS (definido/distribuído) ====
   useEffect(() => {
     const fetchMetas = async () => {
       if (!date) return;
-      const ano = date.getFullYear();
-      const mes = date.getMonth() + 1;
+      const y = date.getFullYear();
+      const m = date.getMonth() + 1;
 
       try {
-        const res = await fetch(`/api/metas?ano=${ano}&mes=${mes}`);
+        const res = await fetch(`/api/metas?ano=${y}&mes=${m}`);
         const data: MetaMes[] = await res.json().catch(() => []);
 
         const metasMap: {
           [key: number]: { valor: number; distribuido: number };
         } = {};
-
         (Array.isArray(data) ? data : []).forEach((meta) => {
           const distribuido = Array.isArray(meta.metasDia)
             ? meta.metasDia.reduce((acc, d) => acc + d.valor, 0)
             : 0;
-          metasMap[meta.categoriaId] = {
-            valor: meta.valor,
-            distribuido,
-          };
+          metasMap[meta.categoriaId] = { valor: meta.valor, distribuido };
         });
 
         setMetasDefinidas(metasMap);
@@ -111,16 +143,26 @@ export default function Metas() {
     fetchMetas();
   }, [date]);
 
-  // input meta mensal
+  // ==== INPUT MENSAL (string para máscara) ====
   const handleChangeMeta = (categoriaId: number, value: string) => {
     setMetas((prev) => ({ ...prev, [categoriaId]: value }));
   };
 
   const handleSaveMetaMensal = async (categoriaId: number) => {
-    const valor = metas[categoriaId];
-    if (!valor) return alert("Digite um valor para a meta");
+    const raw = metas[categoriaId];
+    if (!raw) return alert("Digite um valor para a meta");
 
-    const payload = { categoriaId, ano, mes, valor: Number(valor) };
+    const cat = categorias.find((c) => c.id === categoriaId);
+    let valorNumber: number;
+
+    if (cat?.tipo === "MONETARIO") {
+      valorNumber = parseBRLInput(raw);
+    } else {
+      // unitário: apenas dígitos → number
+      valorNumber = Number(raw.replace(/\D/g, "") || "0");
+    }
+
+    const payload = { categoriaId, ano, mes, valor: valorNumber };
 
     try {
       const resCheck = await fetch(
@@ -129,12 +171,12 @@ export default function Metas() {
       const dataCheck: MetaMes[] = await resCheck.json().catch(() => []);
       const existente = Array.isArray(dataCheck) ? dataCheck[0] : null;
 
-      let res;
+      let res: Response;
       if (existente) {
         res = await fetch(`/api/metas/${existente.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ valor: Number(valor) }),
+          body: JSON.stringify({ valor: valorNumber }),
         });
       } else {
         res = await fetch("/api/metas", {
@@ -162,22 +204,22 @@ export default function Metas() {
     }
   };
 
-  // input meta diária
-  const handleChangeMetaDia = (
+  // ==== INPUT DIÁRIO (SEM MÁSCARA NO ESTADO, guarda number) ====
+  function handleChangeMetaDia(
     dia: number,
     categoriaId: number,
-    value: string
-  ) => {
+    valor: number
+  ) {
     setMetasDiarias((prev) => ({
       ...prev,
       [dia]: {
-        ...prev[dia],
-        [categoriaId]: Number(value),
+        ...(prev[dia] ?? {}),
+        [categoriaId]: valor,
       },
     }));
-  };
+  }
 
-  // ao abrir modal, buscar dados já salvos
+  // ==== AO ABRIR MODAL, CARREGA DIAS EXISTENTES ====
   useEffect(() => {
     const fetchMetasDia = async () => {
       if (openDia == null) return;
@@ -198,7 +240,7 @@ export default function Metas() {
           setMetasDiarias((prev) => ({
             ...prev,
             [openDia]: {
-              ...prev[openDia],
+              ...(prev[openDia] ?? {}),
               [cat.id]: existente.valor,
             },
           }));
@@ -209,14 +251,11 @@ export default function Metas() {
     fetchMetasDia();
   }, [openDia, categorias, ano, mes]);
 
-  
-
-  // salvar meta diária
+  // ==== SALVAR DIÁRIA & IR PARA PRÓXIMO ====
   const handleSaveAndNext = async () => {
     if (openDia == null) return;
 
-    setLoading(true); // ativa o loading
-
+    setLoading(true);
     try {
       for (const cat of categorias) {
         const valor = metasDiarias[openDia]?.[cat.id];
@@ -268,60 +307,45 @@ export default function Metas() {
         const distribuido = Array.isArray(meta.metasDia)
           ? meta.metasDia.reduce((acc, d) => acc + d.valor, 0)
           : 0;
-        metasMap[meta.categoriaId] = {
-          valor: meta.valor,
-          distribuido,
-        };
+        metasMap[meta.categoriaId] = { valor: meta.valor, distribuido };
       });
       setMetasDefinidas(metasMap);
     } finally {
-      setLoading(false); // desliga o loading sempre
+      setLoading(false);
     }
   };
-   
+
+  // ==== CALCULA QUAIS DIAS ESTÃO COMPLETOS (todas categorias com valor) ====
   useEffect(() => {
     const fetchMetas = async () => {
       if (!date) return;
-      const ano = date.getFullYear();
-      const mes = date.getMonth() + 1;
+      const y = date.getFullYear();
+      const m = date.getMonth() + 1;
 
       try {
-        const res = await fetch(`/api/metas?ano=${ano}&mes=${mes}`);
+        const res = await fetch(`/api/metas?ano=${y}&mes=${m}`);
         const data: MetaMes[] = await res.json().catch(() => []);
 
         const metasMap: {
           [key: number]: { valor: number; distribuido: number };
         } = {};
-
-        const completos = new Set<number>();
+        const diasValidos = new Set<number>();
 
         (Array.isArray(data) ? data : []).forEach((meta) => {
           const distribuido = Array.isArray(meta.metasDia)
             ? meta.metasDia.reduce((acc, d) => acc + d.valor, 0)
             : 0;
-          metasMap[meta.categoriaId] = {
-            valor: meta.valor,
-            distribuido,
-          };
-
-          // 🔹 verifica dias preenchidos dessa categoria
-          if (Array.isArray(meta.metasDia)) {
-            meta.metasDia.forEach((d) => {
-              // adiciona dia no set
-              if (d.valor > 0) {
-                // se já existe outras categorias, só marca completo depois
-                completos.add(d.dia);
-              }
-            });
-          }
+          metasMap[meta.categoriaId] = { valor: meta.valor, distribuido };
         });
 
-        // 🔹 agora filtra: dia só é completo se TODAS categorias têm valor
-        const diasValidos = new Set<number>();
+        // dia completo = TODAS as categorias têm valor > 0 nesse dia
         formatted.forEach((dia) => {
           const todasCategoriasOK = categorias.every((cat) => {
             const metaCat = data.find((m) => m.categoriaId === cat.id);
-            return metaCat?.metasDia?.some((d) => d.dia === dia && d.valor > 0);
+            return (
+              metaCat?.metasDia?.some((d) => d.dia === dia && d.valor > 0) ??
+              false
+            );
           });
           if (todasCategoriasOK) diasValidos.add(dia);
         });
@@ -336,8 +360,7 @@ export default function Metas() {
     fetchMetas();
   }, [date, categorias, formatted]);
 
-  
-
+  // ==== RENDER ====
   return (
     <section className="px-20 flex flex-col items-center gap-10 justify-center">
       <h1 className="text-4xl font-semibold">Metas</h1>
@@ -375,13 +398,25 @@ export default function Metas() {
               {/* header */}
               <div className="flex items-center gap-3 mb-3">
                 <h2 className="text-lg font-semibold flex-1">{cat.nome}</h2>
+
+                {/* INPUT MENSAL (com máscara por tipo) */}
                 <input
-                  type="number"
+                  type="text"
                   className="w-22 bg-gray-200 px-2 text-left p-1 rounded-lg"
-                  placeholder="Meta"
-                  value={metas[cat.id] || ""}
-                  onChange={(e) => handleChangeMeta(cat.id, e.target.value)}
+                  placeholder={cat.tipo === "MONETARIO" ? "R$ 0,00" : "Meta"}
+                  value={formatForDisplay(metas[cat.id] ?? "", cat.tipo)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (cat.tipo === "MONETARIO") {
+                      const masked = maskBRL(raw);
+                      handleChangeMeta(cat.id, masked);
+                    } else {
+                      const onlyDigits = raw.replace(/\D/g, "");
+                      handleChangeMeta(cat.id, onlyDigits);
+                    }
+                  }}
                 />
+
                 <button
                   className="bg-black text-white px-2 py-1 rounded w-max"
                   onClick={() => handleSaveMetaMensal(cat.id)}
@@ -405,6 +440,7 @@ export default function Metas() {
           );
         })}
       </div>
+
       {/* lista de dias */}
       <div className="flex flex-wrap gap-2 items-center justify-center">
         {formatted.map((dia) => {
@@ -436,13 +472,30 @@ export default function Metas() {
             {categorias.map((cat) => (
               <div key={cat.id} className="flex items-center gap-2">
                 <span className="flex-1 font-semibold">{cat.nome}</span>
+
+                {/* INPUT DIÁRIO (mostra máscara BRL, estado em number) */}
                 <input
-                  type="number"
-                  value={metasDiarias[openDia]?.[cat.id] || ""}
-                  onChange={(e) =>
-                    handleChangeMetaDia(openDia, cat.id, e.target.value)
-                  }
-                  className="w-20 bg-gray-200 px-2 p-1 rounded-lg text-right"
+                  type="text"
+                  value={(() => {
+                    const raw = metasDiarias[openDia]?.[cat.id];
+                    if (raw == null) return "";
+                    return cat.tipo === "MONETARIO"
+                      ? formatBRL(raw)
+                      : String(raw);
+                  })()}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (cat.tipo === "MONETARIO") {
+                      const numeric = parseBRLInput(raw); // number (reais)
+                      handleChangeMetaDia(openDia, cat.id, numeric);
+                    } else {
+                      const onlyDigits = raw.replace(/\D/g, "");
+                      const numeric = Number(onlyDigits || "0");
+                      handleChangeMetaDia(openDia, cat.id, numeric);
+                    }
+                  }}
+                  className="w-28 bg-gray-200 px-2 p-1 rounded-lg text-right"
+                  placeholder={cat.tipo === "MONETARIO" ? "R$ 0,00" : "0"}
                 />
               </div>
             ))}
