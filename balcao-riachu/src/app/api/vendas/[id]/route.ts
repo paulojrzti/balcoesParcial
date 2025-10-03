@@ -27,14 +27,12 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   const body = await req.json();
-  const { valor, data, categoriaId } = body;
+  const { valor } = body;
 
   const venda = await prisma.venda.update({
     where: { id: Number(params.id) },
     data: {
-      valor,
-      data: data ? new Date(data) : undefined,
-      categoriaId,
+      valor: Number(valor),
     },
   });
 
