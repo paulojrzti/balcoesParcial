@@ -197,26 +197,24 @@ export default function HomePage() {
                 let response;
                 if (existente) {
                   // PUT → atualiza valor
-                  response = await fetch(`/api/vendas/${existente.id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      valor,
-                      data: date,
-                      categoriaId,
-                    }),
-                  });
-                } else {
-                  // POST → cria nova venda
-                  response = await fetch(`/api/vendas`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      valor,
-                      data: date,
-                      categoriaId,
-                    }),
-                  });
+                if (existente) {
+  // PUT → só manda valor
+  response = await fetch(`/api/vendas/${existente.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valor }),  // 👈 só valor
+  });
+} else {
+  // POST → continua igual
+  response = await fetch(`/api/vendas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      valor,
+      data: date,        // aqui sim precisa mandar data
+      categoriaId,
+    }),
+  });
                 }
 
                 if (!response.ok) {
