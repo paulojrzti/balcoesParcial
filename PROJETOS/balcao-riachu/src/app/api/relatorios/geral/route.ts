@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import {prisma} from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // GET /api/relatorios/geral?ano=2025&mes=9
 export async function GET(req: Request) {
