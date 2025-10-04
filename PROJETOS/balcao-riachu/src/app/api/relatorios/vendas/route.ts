@@ -1,41 +1,60 @@
 import { NextResponse } from "next/server";
-import {prisma} from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
-// GET /api/relatorios/vendas?ano=2025&mes=9
+// GET /api/relatorios/vendas?ano=2025&mes=9&dia=15
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const ano = Number(searchParams.get("ano"));
   const mes = Number(searchParams.get("mes"));
+  const dia = searchParams.get("dia") ? Number(searchParams.get("dia")) : null;
 
- const filtro: { data?: { gte: Date; lt: Date } } = {};
-
-  if (ano && mes) {
-    filtro.data = {
-      gte: new Date(ano, mes - 1, 1),
-      lt: new Date(ano, mes, 1),
-    };
-  } else if (ano) {
-    filtro.data = {
-      gte: new Date(ano, 0, 1),
-      lt: new Date(ano + 1, 0, 1),
-    };
+  if (!ano || !mes) {
+    return NextResponse.json({ error: "Informe ano e mes" }, { status: 400 });
   }
 
+  // ✅ use UTC para alinhar com o POST /api/vendas
+  const dataInicio = new Date(Date.UTC(ano, mes - 1, dia || 1, 0, 0, 0, 0));
+  const dataFim = dia
+    ? new Date(Date.UTC(ano, mes - 1, (dia as number) + 1, 0, 0, 0, 0)) // próximo dia UTC
+    : new Date(Date.UTC(ano, mes, 1, 0, 0, 0, 0)); // próximo mês UTC
+
   const vendas = await prisma.venda.findMany({
-    where: filtro,
+    where: {
+      data: {
+        gte: dataInicio,
+        lt: dataFim,
+      },
+    },
     include: { categoria: true },
   });
 
-  const consolidado: Record<string, number> = {};
-  vendas.forEach((v) => {
-    consolidado[v.categoria.nome] =
-      (consolidado[v.categoria.nome] || 0) + v.valor;
-  });
+  // Agrupar vendas por categoria
+  const vendasPorCategoria: Record<
+    number,
+    {
+      categoriaId: number;
+      categoria: string;
+      tipo: string;
+      total: number;
+      quantidade: number;
+    }
+  > = {};
 
-  const resultado = Object.entries(consolidado).map(([categoria, total]) => ({
-    categoria,
-    total,
-  }));
+  for (const v of vendas) {
+    if (!vendasPorCategoria[v.categoriaId]) {
+      vendasPorCategoria[v.categoriaId] = {
+        categoriaId: v.categoriaId,
+        categoria: v.categoria.nome,
+        tipo: v.categoria.tipo,
+        total: 0,
+        quantidade: 0,
+      };
+    }
+    vendasPorCategoria[v.categoriaId].total += v.valor ?? 0;
+    vendasPorCategoria[v.categoriaId].quantidade += 1;
+  }
+
+  const resultado = Object.values(vendasPorCategoria);
 
   return NextResponse.json(resultado);
 }

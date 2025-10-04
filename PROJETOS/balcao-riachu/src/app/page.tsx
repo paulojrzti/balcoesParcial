@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { PeriodSelector } from "@/components";
 
 type DiaMeta = { dia: number; meta: number };
+
 type RelatorioMeta = {
+  categoriaId: number; // <- adicionei para casar com vendas
   categoria: string;
   tipo: "MONETARIO" | "UNITARIO";
   ano: number;
   mes: number;
-  metaMensal: number;
-  totalVendas: number;
-  faltante: number;
+  metaMensal: number; // quando há 'dia', este campo já vira "meta do dia"
   dias: DiaMeta[];
 };
 type Categoria = { id: number; nome: string; tipo: "MONETARIO" | "UNITARIO" };
@@ -34,10 +34,33 @@ type VendaDia = {
   data: string;
 };
 
+type VendaResumo = {
+  categoriaId: number;
+  categoria: string;
+  tipo: "MONETARIO" | "UNITARIO";
+  total: number; // total vendido no período (dia ou mês)
+  quantidade: number;
+};
+
 export default function HomePage() {
   const [mode, setMode] = useState<"day" | "month">("day");
   const [date, setDate] = useState<Date | null>(new Date());
-  const [data, setData] = useState<RelatorioMeta[]>([]);
+  // const [data, setData] = useState<RelatorioMeta[]>([]);
+  const [metasData, setMetasData] = useState<RelatorioMeta[]>([]);
+  const [vendasData, setVendasData] = useState<VendaResumo[]>([]);
+  const [rowsIndicadores, setRowsIndicadores] = useState<
+    {
+      categoriaId: number;
+      categoria: string;
+      tipo: MoneyUnit;
+      metaPeriodo: number; // meta do dia OU meta do mês, conforme 'mode'
+      realizadoPeriodo: number; // total vendido no dia OU mês
+      desvio: number; // realizado - meta
+      percentual: number; // 0..100 (1 casa)
+    }[]
+  >([]);
+
+
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCategoria, setSelectedCategoria] = useState<Categoria | null>(
@@ -61,57 +84,125 @@ export default function HomePage() {
   }, []);
 
   // Buscar metas
-  useEffect(() => {
-    if (!date) return;
+ useEffect(() => {
+   if (!date) return;
 
-    const ano = date.getFullYear();
-    const mes = date.getMonth() + 1;
-    const dia = date.getDate();
+   const ano = date.getFullYear();
+   const mes = date.getMonth() + 1;
+   const dia = date.getDate();
 
-    async function fetchData() {
-      setLoading(true);
-      try {
-        const url =
-          mode === "month"
-            ? `/api/relatorios/metas?ano=${ano}&mes=${mes}`
-            : `/api/relatorios/metas?ano=${ano}&mes=${mes}&dia=${dia}`;
+   async function fetchPrimeiraTabela() {
+     setLoading(true);
+     try {
+       const metasUrl =
+         mode === "month"
+           ? `/api/relatorios/metas?ano=${ano}&mes=${mes}`
+           : `/api/relatorios/metas?ano=${ano}&mes=${mes}&dia=${dia}`;
 
-        const res = await fetch(url);
-        const json = await res.json();
-        setData(json);
-      } catch (err) {
-        console.error("Erro ao buscar dados:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
+       const vendasUrl =
+         mode === "month"
+           ? `/api/relatorios/vendas?ano=${ano}&mes=${mes}`
+           : `/api/relatorios/vendas?ano=${ano}&mes=${mes}&dia=${dia}`;
 
-    fetchData();
+       const [metasRes, vendasRes] = await Promise.all([
+         fetch(metasUrl),
+         fetch(vendasUrl),
+       ]);
 
-    async function fetchGap() {
-      if (mode !== "day") return;
-      const d = date; // <- captura
-      if (!d) return; // <- garante narrowing dentro da função
+       if (!metasRes.ok) throw new Error("Falha ao buscar metas");
+       if (!vendasRes.ok) throw new Error("Falha ao buscar vendas");
 
-      const dateStr = d.toISOString().slice(0, 10);
-      try {
-        const res = await fetch(`/api/relatorios/gap?date=${dateStr}`);
-        const json = await res.json();
-        setGapData(json.data || []);
-      } catch (err) {
-        console.error("Erro ao buscar gap:", err);
-      }
-    }
-    fetchGap();
-  }, [date, mode]);
+       const metasJson: RelatorioMeta[] = await metasRes.json();
+       const vendasJson: VendaResumo[] = await vendasRes.json();
 
-  const formatValue = (value: number, tipo: "MONETARIO" | "UNITARIO") =>
-    tipo === "MONETARIO"
-      ? new Intl.NumberFormat("pt-BR", {
-          style: "currency",
-          currency: "BRL",
-        }).format(value)
-      : value.toString();
+       setMetasData(metasJson);
+       setVendasData(vendasJson);
+
+       // === merge por categoriaId ===
+       const metaById = new Map<number, RelatorioMeta>();
+       metasJson.forEach((m) => metaById.set(m.categoriaId, m));
+
+       const vendaById = new Map<number, VendaResumo>();
+       vendasJson.forEach((v) => vendaById.set(v.categoriaId, v));
+
+       const catIds = new Set<number>([
+         ...metaById.keys(),
+         ...vendaById.keys(),
+       ]);
+
+       const linhas = Array.from(catIds).map((id) => {
+         const m = metaById.get(id);
+         const v = vendaById.get(id);
+
+         const categoria = m?.categoria || v?.categoria || `Categoria ${id}`;
+         const tipo: MoneyUnit = (m?.tipo ||
+           v?.tipo ||
+           "MONETARIO") as MoneyUnit;
+
+         // quando 'dia' é enviado, backend retorna a meta do dia em 'metaMensal'
+         const metaPeriodo = m?.metaMensal ?? 0;
+         const realizadoPeriodo = v?.total ?? 0;
+
+         const desvio = Number((realizadoPeriodo - metaPeriodo).toFixed(2));
+         const percentual =
+           metaPeriodo > 0
+             ? Number(((realizadoPeriodo / metaPeriodo) * 100).toFixed(1))
+             : 0;
+
+         return {
+           categoriaId: id,
+           categoria,
+           tipo,
+           metaPeriodo,
+           realizadoPeriodo,
+           desvio,
+           percentual,
+         };
+       });
+
+       linhas.sort((a, b) => a.categoria.localeCompare(b.categoria));
+       setRowsIndicadores(linhas);
+     } catch (err) {
+       console.error("Erro ao buscar dados:", err);
+       setMetasData([]);
+       setVendasData([]);
+       setRowsIndicadores([]);
+     } finally {
+       setLoading(false);
+     }
+   }
+
+   fetchPrimeiraTabela();
+
+   // ← mantém seu fetchGap do jeito que já está
+   async function fetchGap() {
+     if (mode !== "day") return;
+     const d = date;
+     if (!d) return;
+     const dateStr = d.toISOString().slice(0, 10);
+     try {
+       const res = await fetch(`/api/relatorios/gap?date=${dateStr}`);
+       const json = await res.json();
+       setGapData(json.data || []);
+     } catch (err) {
+       console.error("Erro ao buscar gap:", err);
+     }
+   }
+   fetchGap();
+ }, [date, mode]);
+
+  const formatValue = (
+    value: number | undefined,
+    tipo: "MONETARIO" | "UNITARIO"
+  ) =>
+    value !== undefined
+      ? tipo === "MONETARIO"
+        ? new Intl.NumberFormat("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          }).format(value)
+        : value.toString()
+      : "-";
 
   const handleCategoriaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const cat = categorias.find((c) => c.id === Number(e.target.value)) || null;
@@ -176,21 +267,16 @@ export default function HomePage() {
           </thead>
           <tbody
             className="bg-[rgba(212,212,212,0)] backdrop-blur-[4px] 
-              border border-white/10
-              shadow-[0_6px_16px_rgba(0,0,0,0.25),-6px_12px_20px_rgba(255,255,255,0.2)_inset,3px_3px_20px_rgba(58,58,58,0.08)_inset] 
-              rounded-lg"
+    border border-white/10
+    shadow-[0_6px_16px_rgba(0,0,0,0.25),-6px_12px_20px_rgba(255,255,255,0.2)_inset,3px_3px_20px_rgba(58,58,58,0.08)_inset] 
+    rounded-lg"
           >
-            {data.map((meta) => {
-              const percentual =
-                meta.metaMensal > 0
-                  ? ((meta.totalVendas / meta.metaMensal) * 100).toFixed(1)
-                  : "0";
-              const desvio = meta.totalVendas - meta.metaMensal;
-              const atingiu = meta.totalVendas >= meta.metaMensal;
+            {rowsIndicadores.map((row) => {
+              const atingiu = row.realizadoPeriodo >= row.metaPeriodo;
 
               return (
                 <tr
-                  key={meta.categoria}
+                  key={row.categoriaId}
                   className={`text-center text-base transition ${
                     atingiu
                       ? "bg-green-100 hover:bg-green-200"
@@ -198,49 +284,59 @@ export default function HomePage() {
                   }`}
                 >
                   <td className="px-6 py-4 font-semibold text-lg text-gray-800 text-left">
-                    {meta.categoria}
+                    {row.categoria}
                   </td>
+
                   <td className="px-6 py-4 text-left text-lg text-gray-800">
-                    {formatValue(meta.metaMensal, meta.tipo)}
+                    {formatValue(row.metaPeriodo, row.tipo)}
                   </td>
+
                   <td className="px-6 py-4 text-left text-lg font-semibold text-gray-800">
-                    {formatValue(meta.totalVendas, meta.tipo)}
+                    {formatValue(row.realizadoPeriodo, row.tipo)}
                   </td>
+
                   <td
                     className={`px-6 py-4 text-left text-lg font-semibold ${
-                      desvio > 0
+                      row.desvio > 0
                         ? "text-green-600"
-                        : desvio < 0
+                        : row.desvio < 0
                         ? "text-red-600"
                         : "text-gray-800"
                     }`}
                   >
-                    {desvio > 0
-                      ? `+${formatValue(desvio, meta.tipo)}`
-                      : formatValue(desvio, meta.tipo)}
+                    {row.desvio > 0
+                      ? `+${formatValue(row.desvio, row.tipo)}`
+                      : formatValue(row.desvio, row.tipo)}
                   </td>
+
                   <td className="px-6 py-4 text-left text-gray-800">
-                    {percentual}%
+                    {row.percentual}%
                   </td>
                 </tr>
               );
             })}
+
+            {rowsIndicadores.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                  Nenhum dado para este período
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
-
-      {/* Registrar Venda */}
+      {/* registrar venda */}
       {mode === "day" && (
         <div
           className="mt-10 w-full max-w-md bg-[rgba(212,212,212,0)] backdrop-blur-[4px] 
-              border border-white/10
-              shadow-[0_6px_16px_rgba(0,0,0,0.25),-6px_12px_20px_rgba(255,255,255,0.2)_inset,3px_3px_20px_rgba(58,58,58,0.08)_inset] 
-               transition-all duration-500 hover:scale-[1.03] hover:shadow-[0_10px_28px_rgba(0,0,0,0.35)] p-6 rounded-lg"
+        border border-white/10
+        shadow-[0_6px_16px_rgba(0,0,0,0.25),-6px_12px_20px_rgba(255,255,255,0.2)_inset,3px_3px_20px_rgba(58,58,58,0.08)_inset] 
+         transition-all duration-500 hover:scale-[1.03] hover:shadow-[0_10px_28px_rgba(0,0,0,0.35)] p-6 rounded-lg"
         >
           <h2 className="text-lg font-bold mb-4 text-center">
             Registrar Venda
           </h2>
-
           <form
             className="flex flex-col gap-4"
             onSubmit={async (e) => {
@@ -265,40 +361,16 @@ export default function HomePage() {
               setLoading(true);
 
               try {
-                // Buscar vendas existentes do dia
-                const res = await fetch(
-                  `/api/vendas?ano=${ano}&mes=${mes}&dia=${dia}`
-                );
-                const vendasDoDia: VendaDia[] = await res.json();
-
-                // Verifica se já existe uma venda da mesma categoria no dia
-                const existente = vendasDoDia.find(
-                  (v) => v.categoriaId === selectedCategoria!.id
-                );
-
-                // POST ou PUT dependendo da existência
-                let response;
-                if (existente) {
-                  response = await fetch(`/api/vendas/${existente.id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      valor: valorNumber,
-                      data: date,
-                      categoriaId: selectedCategoria.id,
-                    }),
-                  });
-                } else {
-                  response = await fetch(`/api/vendas`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      valor: valorNumber,
-                      data: date,
-                      categoriaId: selectedCategoria.id,
-                    }),
-                  });
-                }
+                // ✅ Envia data no formato ISO (YYYY-MM-DD)
+                const response = await fetch(`/api/vendas`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    valor: valorNumber,
+                    data: date.toISOString().slice(0, 10), // "2025-10-04"
+                    categoriaId: selectedCategoria.id,
+                  }),
+                });
 
                 if (!response.ok) throw new Error("Erro ao salvar venda");
 
@@ -306,14 +378,11 @@ export default function HomePage() {
                 setValorInput("");
                 setSelectedCategoria(null);
 
-                // Espera leve para garantir atualização no banco
-                await new Promise((r) => setTimeout(r, 300));
-
                 // Atualiza tabela de metas
                 const metasRes = await fetch(
                   `/api/relatorios/metas?ano=${ano}&mes=${mes}&dia=${dia}`
                 );
-                setData(await metasRes.json());
+                setDate(await metasRes.json());
 
                 // Atualiza relatório diário (gap)
                 const dateStr = date.toISOString().slice(0, 10);
@@ -377,6 +446,7 @@ export default function HomePage() {
           </form>
         </div>
       )}
+
       {/* gap */}
       {mode === "day" && (
         <div className="overflow-x-auto w-full max-w-4xl my-30">
