@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import {prisma} from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // GET /api/vendas/[id]
 export async function GET(
@@ -27,14 +27,12 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   const body = await req.json();
-  const { valor, data, categoriaId } = body;
+  const { valor } = body;
 
   const venda = await prisma.venda.update({
     where: { id: Number(params.id) },
     data: {
-      valor,
-      data: data ? new Date(data) : undefined,
-      categoriaId,
+      valor: Number(valor),
     },
   });
 

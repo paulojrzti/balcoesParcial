@@ -183,41 +183,35 @@ export default function HomePage() {
               const dia = date.getDate();
 
               try {
-                // Buscar vendas do dia
                 const res = await fetch(
-                  `/api/vendas?ano=${ano}&mes=${mes}&dia=${dia}`
-                );
-                const vendasDoDia = await res.json();
+  `/api/vendas?ano=${ano}&mes=${mes}&dia=${dia}`
+);
+const vendasDoDia = await res.json();
 
-                const existente = vendasDoDia.find(
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (v: any) => v.categoriaId === categoriaId
-                );
+const existente = vendasDoDia.find(
+  (v: any) => v.categoriaId === categoriaId
+);
 
-                let response;
-                if (existente) {
-                  // PUT → atualiza valor
-                  response = await fetch(`/api/vendas/${existente.id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      valor,
-                      data: date,
-                      categoriaId,
-                    }),
-                  });
-                } else {
-                  // POST → cria nova venda
-                  response = await fetch(`/api/vendas`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      valor,
-                      data: date,
-                      categoriaId,
-                    }),
-                  });
-                }
+let response;
+if (existente) {
+  // PUT → só atualiza valor da venda do dia certo
+  response = await fetch(`/api/vendas/${existente.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valor }),
+  });
+} else {
+  // POST → cria nova venda com data correta
+  response = await fetch(`/api/vendas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      valor,
+      data: date,
+      categoriaId,
+    }),
+  });
+}
 
                 if (!response.ok) {
                   throw new Error("Erro ao salvar venda");
