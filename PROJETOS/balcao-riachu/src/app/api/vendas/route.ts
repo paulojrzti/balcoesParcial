@@ -1,21 +1,15 @@
 import { NextResponse } from "next/server";
 import {prisma} from "@/lib/prisma";
 
-// GET /api/vendas?ano=2025&mes=10&dia=3
+// GET /api/vendas?ano=2025&mes=9
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const ano = Number(searchParams.get("ano"));
   const mes = Number(searchParams.get("mes"));
-  const dia = Number(searchParams.get("dia"));
 
   const filtro: { data?: { gte: Date; lt: Date } } = {};
 
-  if (ano && mes && dia) {
-    filtro.data = {
-      gte: new Date(ano, mes - 1, dia),
-      lt: new Date(ano, mes - 1, dia + 1),
-    };
-  } else if (ano && mes) {
+  if (ano && mes) {
     filtro.data = {
       gte: new Date(ano, mes - 1, 1),
       lt: new Date(ano, mes, 1),
@@ -35,6 +29,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json(vendas);
 }
+
 // POST /api/vendas
 export async function POST(req: Request) {
   const body = await req.json();

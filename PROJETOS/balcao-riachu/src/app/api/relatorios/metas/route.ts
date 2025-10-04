@@ -12,14 +12,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Informe ano e mes" }, { status: 400 });
   }
 
- const dataInicio = dia
-   ? new Date(Date.UTC(ano, mes - 1, dia, 0, 0, 0))
-   : new Date(Date.UTC(ano, mes - 1, 1, 0, 0, 0));
-
- const dataFim = dia
-   ? new Date(Date.UTC(ano, mes - 1, dia + 1, 0, 0, 0))
-   : new Date(Date.UTC(ano, mes, 1, 0, 0, 0));
-
+  const dataInicio = new Date(ano, mes - 1, dia || 1);
+  const dataFim = dia
+    ? new Date(ano, mes - 1, dia + 1) // próximo dia
+    : new Date(ano, mes, 1); // próximo mês
 
   const metas = await prisma.metaMes.findMany({
     where: { ano, mes },
