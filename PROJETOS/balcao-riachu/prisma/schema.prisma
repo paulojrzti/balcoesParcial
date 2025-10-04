@@ -12,11 +12,13 @@ datasource db {
 
 
 model Categoria {
-  id       Int       @id @default(autoincrement())
-  nome     String    @unique
-  tipo     TipoMeta  // MONETARIO ou UNITARIO
-  metasMes MetaMes[]
-  vendas   Venda[]
+  id         Int           @id @default(autoincrement())
+  nome       String        @unique
+  tipo       TipoMeta
+  metasMes   MetaMes[]
+  vendas     Venda[]
+  // BACK-RELATION novo p/ metas por colaborador
+  metasColab MetaColabMes[]
 }
 
 model MetaMes {
@@ -25,7 +27,7 @@ model MetaMes {
   categoriaId Int
   ano         Int
   mes         Int
-  valor       Float      // teto do mês
+  valor       Float
 
   metasDia    MetaDia[]
 
@@ -37,21 +39,74 @@ model MetaDia {
   metaMes   MetaMes @relation(fields: [metaMesId], references: [id])
   metaMesId Int
   dia       Int
-  valor     Float   // meta diária
+  valor     Float
 
   @@unique([metaMesId, dia])
 }
 
 model Venda {
-  id          Int       @id @default(autoincrement())
-  categoria   Categoria @relation(fields: [categoriaId], references: [id])
-  categoriaId Int
-  valor       Float
-  data        DateTime  @default(now())
+  id             Int           @id @default(autoincrement())
+  categoria      Categoria     @relation(fields: [categoriaId], references: [id])
+  categoriaId    Int
+  valor          Float
+  quantidade     Float?        // (sugestão) p/ unitários
+  data           DateTime      @default(now())
+
+  // RELAÇÃO opcional com Colaborador (atalho 100%)
+  colaborador    Colaborador?  @relation(fields: [colaboradorId], references: [id])
+  colaboradorId  Int?
+
+  // Rateios (venda dividida entre vários)
+  alocacoes      VendaAlocacao[]
+}
+
+model Colaborador {
+  id        Int             @id @default(autoincrement())
+  nome      String
+  // BACK-RELATION para Venda.colaborador
+  vendas    Venda[]
+  // BACK-RELATION para VendaAlocacao.colaborador
+  alocacoes VendaAlocacao[]
+  // BACK-RELATION para MetaColabMes.colaborador
+  metas     MetaColabMes[]
+
+  @@index([nome])
+}
+
+model VendaAlocacao {
+  id             Int          @id @default(autoincrement())
+  venda          Venda        @relation(fields: [vendaId], references: [id])
+  vendaId        Int
+  colaborador    Colaborador  @relation(fields: [colaboradorId], references: [id])
+  colaboradorId  Int
+
+  // use um ou outro conforme o tipo da categoria da venda
+  valor          Float?
+  quantidade     Float?
+
+  criadoEm       DateTime     @default(now())
+
+  @@index([vendaId])
+  @@index([colaboradorId])
+  // @@unique([vendaId, colaboradorId]) // opcional
+}
+
+model MetaColabMes {
+  id            Int         @id @default(autoincrement())
+  colaborador   Colaborador @relation(fields: [colaboradorId], references: [id])
+  colaboradorId Int
+  categoria     Categoria   @relation(fields: [categoriaId], references: [id])
+  categoriaId   Int
+  ano           Int
+  mes           Int
+
+  valor         Float?      // para categorias MONETARIO
+  quantidade    Float?      // para categorias UNITARIO
+
+  @@unique([colaboradorId, categoriaId, ano, mes])
 }
 
 enum TipoMeta {
   MONETARIO
   UNITARIO
 }
-
