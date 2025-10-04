@@ -34,8 +34,6 @@ type VendaDia = {
   data: string;
 };
 
-
-
 export default function HomePage() {
   const [mode, setMode] = useState<"day" | "month">("day");
   const [date, setDate] = useState<Date | null>(new Date());
@@ -90,21 +88,21 @@ export default function HomePage() {
 
     fetchData();
 
-   async function fetchGap() {
-     if (mode !== "day") return;
-     const d = date; // <- captura
-     if (!d) return; // <- garante narrowing dentro da função
+    async function fetchGap() {
+      if (mode !== "day") return;
+      const d = date; // <- captura
+      if (!d) return; // <- garante narrowing dentro da função
 
-     const dateStr = d.toISOString().slice(0, 10);
-     try {
-       const res = await fetch(`/api/relatorios/gap?date=${dateStr}`);
-       const json = await res.json();
-       setGapData(json.data || []);
-     } catch (err) {
-       console.error("Erro ao buscar gap:", err);
-     }
-   }
-   fetchGap();
+      const dateStr = d.toISOString().slice(0, 10);
+      try {
+        const res = await fetch(`/api/relatorios/gap?date=${dateStr}`);
+        const json = await res.json();
+        setGapData(json.data || []);
+      } catch (err) {
+        console.error("Erro ao buscar gap:", err);
+      }
+    }
+    fetchGap();
   }, [date, mode]);
 
   const formatValue = (value: number, tipo: "MONETARIO" | "UNITARIO") =>
@@ -142,7 +140,6 @@ export default function HomePage() {
     row.tipo ??
     categorias.find((c) => c.nome === row.categoria)?.tipo ??
     "UNITARIO";
-
 
   return (
     <main className="flex flex-col items-center p-8 gap-10">
@@ -265,16 +262,21 @@ export default function HomePage() {
               const mes = date.getMonth() + 1;
               const dia = date.getDate();
 
+              setLoading(true);
+
               try {
+                // Buscar vendas existentes do dia
                 const res = await fetch(
                   `/api/vendas?ano=${ano}&mes=${mes}&dia=${dia}`
                 );
                 const vendasDoDia: VendaDia[] = await res.json();
 
+                // Verifica se já existe uma venda da mesma categoria no dia
                 const existente = vendasDoDia.find(
                   (v) => v.categoriaId === selectedCategoria!.id
                 );
 
+                // POST ou PUT dependendo da existência
                 let response;
                 if (existente) {
                   response = await fetch(`/api/vendas/${existente.id}`, {
@@ -304,13 +306,27 @@ export default function HomePage() {
                 setValorInput("");
                 setSelectedCategoria(null);
 
+                // Espera leve para garantir atualização no banco
+                await new Promise((r) => setTimeout(r, 300));
+
+                // Atualiza tabela de metas
                 const metasRes = await fetch(
                   `/api/relatorios/metas?ano=${ano}&mes=${mes}&dia=${dia}`
                 );
                 setData(await metasRes.json());
+
+                // Atualiza relatório diário (gap)
+                const dateStr = date.toISOString().slice(0, 10);
+                const gapRes = await fetch(
+                  `/api/relatorios/gap?date=${dateStr}`
+                );
+                const gapJson = await gapRes.json();
+                setGapData(gapJson.data || []);
               } catch (err) {
                 console.error(err);
                 alert("Falha ao registrar venda");
+              } finally {
+                setLoading(false);
               }
             }}
           >
@@ -349,9 +365,14 @@ export default function HomePage() {
 
             <button
               type="submit"
-              className="bg-black text-white py-2 px-4 rounded-md hover:bg-gray-800 transition"
+              disabled={loading}
+              className={`py-2 px-4 rounded-md transition text-white ${
+                loading
+                  ? "bg-gray-600 cursor-not-allowed"
+                  : "bg-black hover:bg-gray-800"
+              }`}
             >
-              Salvar
+              {loading ? "Salvando..." : "Salvar"}
             </button>
           </form>
         </div>
@@ -359,7 +380,9 @@ export default function HomePage() {
       {/* gap */}
       {mode === "day" && (
         <div className="overflow-x-auto w-full max-w-4xl my-30">
-          <h2 className="text-3xl font-bold mb-10 text-center">Relatório Diário (Gap)</h2>
+          <h2 className="text-3xl font-bold mb-10 text-center">
+            Relatório Diário (Gap)
+          </h2>
 
           <table className="w-full border-collapse rounded-lg shadow-lg overflow-hidden">
             <thead className="bg-zinc-900 text-white">
