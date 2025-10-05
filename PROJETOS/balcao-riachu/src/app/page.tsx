@@ -378,20 +378,75 @@ export default function HomePage() {
                 setValorInput("");
                 setSelectedCategoria(null);
 
-                // Atualiza tabela de metas
-                const metasRes = await fetch(
-                  `/api/relatorios/metas?ano=${ano}&mes=${mes}&dia=${dia}`
-                );
-                const metasJson = await metasRes.json();
-                setMetasData(metasJson); // atualiza as metas em vez de mexer na data
+                // Atualiza a PRIMEIRA tabela (metas + vendas + indicadores)
+                const metasUrl = `/api/relatorios/metas?ano=${ano}&mes=${mes}&dia=${dia}`;
+                const vendasUrl = `/api/relatorios/vendas?ano=${ano}&mes=${mes}&dia=${dia}`;
 
-                // Atualiza relatório diário (gap)
+                const [metasRes, vendasRes] = await Promise.all([
+                  fetch(metasUrl),
+                  fetch(vendasUrl),
+                ]);
+
+                const metasJson: RelatorioMeta[] = await metasRes.json();
+                const vendasJson: VendaResumo[] = await vendasRes.json();
+                setMetasData(metasJson);
+                setVendasData(vendasJson);
+
+                // recalcula as linhas da tabela principal
+                const metaById = new Map<number, RelatorioMeta>();
+                metasJson.forEach((m) => metaById.set(m.categoriaId, m));
+
+                const vendaById = new Map<number, VendaResumo>();
+                vendasJson.forEach((v) => vendaById.set(v.categoriaId, v));
+
+                const catIds = new Set<number>([
+                  ...metaById.keys(),
+                  ...vendaById.keys(),
+                ]);
+
+                const linhas = Array.from(catIds).map((id) => {
+                  const m = metaById.get(id);
+                  const v = vendaById.get(id);
+
+                  const categoria =
+                    m?.categoria || v?.categoria || `Categoria ${id}`;
+                  const tipo: MoneyUnit = (m?.tipo ||
+                    v?.tipo ||
+                    "MONETARIO") as MoneyUnit;
+                  const metaPeriodo = m?.metaMensal ?? 0;
+                  const realizadoPeriodo = v?.total ?? 0;
+                  const desvio = Number(
+                    (realizadoPeriodo - metaPeriodo).toFixed(2)
+                  );
+                  const percentual =
+                    metaPeriodo > 0
+                      ? Number(
+                          ((realizadoPeriodo / metaPeriodo) * 100).toFixed(1)
+                        )
+                      : 0;
+
+                  return {
+                    categoriaId: id,
+                    categoria,
+                    tipo,
+                    metaPeriodo,
+                    realizadoPeriodo,
+                    desvio,
+                    percentual,
+                  };
+                });
+
+                linhas.sort((a, b) => a.categoria.localeCompare(b.categoria));
+                setRowsIndicadores(linhas);
+
+                // Atualiza o GAP (mantém igual estava)
                 const dateStr = date.toISOString().slice(0, 10);
                 const gapRes = await fetch(
                   `/api/relatorios/gap?date=${dateStr}`
                 );
                 const gapJson = await gapRes.json();
                 setGapData(gapJson.data || []);
+
               } catch (err) {
                 console.error(err);
                 alert("Falha ao registrar venda");
