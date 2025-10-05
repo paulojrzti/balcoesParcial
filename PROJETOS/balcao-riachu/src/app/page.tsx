@@ -382,7 +382,8 @@ export default function HomePage() {
                 const metasRes = await fetch(
                   `/api/relatorios/metas?ano=${ano}&mes=${mes}&dia=${dia}`
                 );
-                setDate(await metasRes.json());
+                const metasJson = await metasRes.json();
+                setMetasData(metasJson); // atualiza as metas em vez de mexer na data
 
                 // Atualiza relatório diário (gap)
                 const dateStr = date.toISOString().slice(0, 10);

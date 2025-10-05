@@ -5,14 +5,22 @@ import "react-datepicker/dist/react-datepicker.css";
 
 type DateSelectorProps = {
   mode: "month" | "day";
-  value: Date | null;
+  value: Date | null | string; // ← aceita string também
   onChange: (date: Date | null) => void;
 };
 
 export function DateSelector({ mode, value, onChange }: DateSelectorProps) {
+  // 🔧 converte automaticamente string → Date
+  const parsedValue =
+    typeof value === "string"
+      ? new Date(value)
+      : value instanceof Date
+      ? value
+      : null;
+
   return (
     <DatePicker
-      selected={value}
+      selected={parsedValue}
       onChange={onChange}
       dateFormat={mode === "month" ? "MMMM yyyy" : "dd/MM/yyyy"}
       showMonthYearPicker={mode === "month"}
